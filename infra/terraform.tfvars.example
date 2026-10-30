@@ -1,0 +1,13 @@
+aws_region   = "us-east-1"
+project_name = "housing-predictor"
+
+# Required for apply. terraform validate accepts the placeholder default.
+# lambda_image_uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/housing-predictor-predict:TAG"
+
+# Bootstrap once with an admin principal, then keep these true on every later
+# apply (the GitHub Actions workflow does). Leaving them false removes the role.
+# create_github_oidc_provider = true
+# create_github_oidc_role     = true
+# github_repository           = "Devam360/serverless-ml-inference-aws"
+# terraform_state_bucket_arn  = "arn:aws:s3://your-terraform-state-bucket"
+# terraform_lock_table_arn    = "arn:aws:dynamodb:us-east-1:123456789012:table/your-terraform-locks"
