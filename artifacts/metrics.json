@@ -1,0 +1,127 @@
+{
+  "model_version": "california-housing-hgb-v1",
+  "trained_at": "2026-10-30T16:55:05+00:00",
+  "dataset": {
+    "name": "California housing",
+    "loader": "sklearn.datasets.fetch_california_housing",
+    "rows": 20640,
+    "feature_names": [
+      "MedInc",
+      "HouseAge",
+      "AveRooms",
+      "AveBedrms",
+      "Population",
+      "AveOccup",
+      "Latitude",
+      "Longitude"
+    ],
+    "target": "MedHouseVal",
+    "target_units": "100,000 USD (1990 census median house value)",
+    "target_min": 0.14999,
+    "target_max": 5.00001,
+    "rows_at_target_max": 992,
+    "rows_within_api_bounds": 20621,
+    "citation": "Pace and Barry, Statistics and Probability Letters, 1997"
+  },
+  "split": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "train_rows": 16512,
+    "test_rows": 4128
+  },
+  "model": {
+    "type": "Pipeline(StandardScaler, HistGradientBoostingRegressor)",
+    "params": {
+      "loss": "squared_error",
+      "learning_rate": 0.08,
+      "max_iter": 300,
+      "max_depth": 8,
+      "min_samples_leaf": 20,
+      "l2_regularization": 0.1,
+      "early_stopping": false,
+      "random_state": 42
+    }
+  },
+  "baseline": {
+    "type": "DummyRegressor(strategy='median')",
+    "test_metrics": {
+      "rmse": 1.173117,
+      "mae": 0.87404,
+      "r2": -0.050209
+    }
+  },
+  "train_metrics": {
+    "rmse": 0.331916,
+    "mae": 0.228981,
+    "r2": 0.917587
+  },
+  "test_metrics": {
+    "rmse": 0.441803,
+    "mae": 0.29163,
+    "r2": 0.851047
+  },
+  "rmse_improvement_vs_median_baseline": 0.623394,
+  "permutation_importance": [
+    {
+      "feature": "Latitude",
+      "mean_rmse_increase": 0.814794,
+      "std_rmse_increase": 0.011882
+    },
+    {
+      "feature": "Longitude",
+      "mean_rmse_increase": 0.730236,
+      "std_rmse_increase": 0.009013
+    },
+    {
+      "feature": "MedInc",
+      "mean_rmse_increase": 0.401403,
+      "std_rmse_increase": 0.006999
+    },
+    {
+      "feature": "AveOccup",
+      "mean_rmse_increase": 0.182847,
+      "std_rmse_increase": 0.005424
+    },
+    {
+      "feature": "AveRooms",
+      "mean_rmse_increase": 0.101344,
+      "std_rmse_increase": 0.002646
+    },
+    {
+      "feature": "HouseAge",
+      "mean_rmse_increase": 0.062725,
+      "std_rmse_increase": 0.003643
+    },
+    {
+      "feature": "AveBedrms",
+      "mean_rmse_increase": 0.012865,
+      "std_rmse_increase": 0.000935
+    },
+    {
+      "feature": "Population",
+      "mean_rmse_increase": 0.011192,
+      "std_rmse_increase": 0.000682
+    }
+  ],
+  "example": {
+    "split": "test",
+    "row_index_within_test": 0,
+    "features": {
+      "MedInc": 1.6812,
+      "HouseAge": 25.0,
+      "AveRooms": 4.192201,
+      "AveBedrms": 1.022284,
+      "Population": 1392.0,
+      "AveOccup": 3.877437,
+      "Latitude": 36.06,
+      "Longitude": -119.01
+    },
+    "actual": 0.477,
+    "predicted": 0.5986
+  },
+  "versions": {
+    "python": "3.12.3",
+    "numpy": "2.5.4",
+    "scikit_learn": "1.9.1"
+  }
+}

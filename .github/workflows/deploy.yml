@@ -1,0 +1,151 @@
+# Manual deploy. This workflow does not run on push.
+#
+# GitHub configuration (see README "Deploy"):
+#   Secret  AWS_ROLE_ARN      IAM role ARN from output github_deploy_role_arn
+#   Secret  TF_STATE_BUCKET   Pre-created S3 bucket for Terraform state
+#   Secret  TF_LOCK_TABLE     Optional DynamoDB lock table name
+#   Variable AWS_REGION       Optional, defaults to us-east-1
+#   Variable TF_STATE_KEY     Optional, defaults to housing-predictor/terraform.tfstate
+#
+# The job assumes the role with GitHub OIDC. It does not use static access keys.
+# The first bootstrap (OIDC provider, state bucket, first image) is done locally
+# with an admin principal, because this role cannot create itself.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Container tag. Defaults to the full commit SHA.
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build image and terraform apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required configuration
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION_INPUT: ${{ vars.AWS_REGION }}
+          TF_STATE_KEY_INPUT: ${{ vars.TF_STATE_KEY }}
+        run: |
+          if [ -z "${AWS_ROLE_ARN}" ]; then
+            echo "Missing GitHub secret AWS_ROLE_ARN"
+            exit 1
+          fi
+          if [ -z "${TF_STATE_BUCKET}" ]; then
+            echo "Missing GitHub secret TF_STATE_BUCKET"
+            exit 1
+          fi
+          echo "AWS_REGION=${AWS_REGION_INPUT:-us-east-1}" >> "${GITHUB_ENV}"
+          echo "TF_STATE_KEY=${TF_STATE_KEY_INPUT:-housing-predictor/terraform.tfstate}" >> "${GITHUB_ENV}"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+        run: |
+          args=(
+            -input=false
+            -backend-config="bucket=${TF_STATE_BUCKET}"
+            -backend-config="key=${TF_STATE_KEY}"
+            -backend-config="region=${AWS_REGION}"
+            -backend-config="encrypt=true"
+          )
+          if [ -n "${TF_LOCK_TABLE}" ]; then
+            args+=(-backend-config="dynamodb_table=${TF_LOCK_TABLE}")
+          fi
+          terraform init "${args[@]}"
+
+      - name: Ensure the ECR repository exists
+        working-directory: infra
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=aws_ecr_repository.lambda \
+            -target=aws_ecr_lifecycle_policy.lambda \
+            -var="aws_region=${AWS_REGION}" \
+            -var="create_github_oidc_provider=true" \
+            -var="create_github_oidc_role=true"
+
+      - name: Build and push the Lambda image
+        id: image
+        env:
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+        run: |
+          repository="$(terraform -chdir=infra output -raw ecr_repository_url)"
+          tag="${IMAGE_TAG_INPUT:-${GITHUB_SHA}}"
+          uri="${repository}:${tag}"
+          echo "uri=${uri}" >> "${GITHUB_OUTPUT}"
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${repository%%/*}"
+          docker build --platform linux/amd64 --provenance=false -t "${uri}" .
+          docker push "${uri}"
+
+      - name: Terraform apply
+        working-directory: infra
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          state_arn="arn:aws:s3:::${TF_STATE_BUCKET}"
+          lock_arn=""
+          if [ -n "${TF_LOCK_TABLE}" ]; then
+            lock_arn="arn:aws:dynamodb:${AWS_REGION}:${account_id}:table/${TF_LOCK_TABLE}"
+          fi
+          terraform apply -input=false -auto-approve \
+            -var="aws_region=${AWS_REGION}" \
+            -var="lambda_image_uri=${IMAGE_URI}" \
+            -var="create_github_oidc_provider=true" \
+            -var="create_github_oidc_role=true" \
+            -var="terraform_state_bucket_arn=${state_arn}" \
+            -var="terraform_lock_table_arn=${lock_arn}"
+
+      - name: Smoke test
+        working-directory: infra
+        run: |
+          health="$(terraform output -raw health_url)"
+          predict="$(terraform output -raw predict_url)"
+          echo "GET ${health}"
+          ok=0
+          for _ in 1 2 3 4 5; do
+            if curl --fail-with-body --silent --show-error --max-time 60 "${health}"; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "${ok}" -eq 1
+          echo
+          echo "POST ${predict}"
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -H "content-type: application/json" \
+            --data @"${GITHUB_WORKSPACE}/examples/predict.json" \
+            "${predict}"
+          echo

@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "rawPath": "/predict",
+  "requestContext": {
+    "http": {
+      "method": "POST"
+    },
+    "requestId": "example"
+  },
+  "isBase64Encoded": false,
+  "body": "{\"MedInc\": 1.6812, \"HouseAge\": 25.0, \"AveRooms\": 4.192201, \"AveBedrms\": 1.022284, \"Population\": 1392.0, \"AveOccup\": 3.877437, \"Latitude\": 36.06, \"Longitude\": -119.01}"
+}

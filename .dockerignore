@@ -1,0 +1,11 @@
+.venv
+.git
+.github
+infra
+tests
+artifacts
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.tfstate
+*.tfstate.*
